@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
+const crypto = require('node:crypto');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -314,6 +315,83 @@ Analise o documento inteiro e retorne os dados da nota fiscal, classificando cad
     return res.status(500).json({
       error: 'Erro interno ao processar a nota fiscal.',
     });
+  }
+});
+
+
+// Validação de assinatura exclusivamente no servidor. Nunca envie esta credencial ao aplicativo.
+const GOOGLE_PACKAGE_NAME = 'br.com.safratab.app';
+const GOOGLE_SUBSCRIPTION_ID = 'gestao_tabaco_premium';
+const subscriptionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+});
+
+function base64url(value) {
+  return Buffer.from(value).toString('base64url');
+}
+
+async function googleAccessToken() {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error('Credencial Google não configurada');
+  const credentials = JSON.parse(raw);
+  if (credentials.type !== 'service_account' || !credentials.client_email || !credentials.private_key) {
+    throw new Error('Credencial Google inválida');
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: credentials.client_email,
+    scope: 'https://www.googleapis.com/auth/androidpublisher',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  };
+  const unsigned = `${base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${base64url(JSON.stringify(payload))}`;
+  const signature = crypto.sign('RSA-SHA256', Buffer.from(unsigned), credentials.private_key).toString('base64url');
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${signature}` }),
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!tokenResponse.ok) throw new Error(`Autenticação Google falhou: HTTP ${tokenResponse.status}`);
+  const result = await tokenResponse.json();
+  if (!result.access_token) throw new Error('Google não retornou access token');
+  return result.access_token;
+}
+
+// Recebe o purchaseToken retornado pelo Google Play Billing no dispositivo.
+// O produto e o pacote são fixos no servidor para impedir consultas arbitrárias.
+app.post('/api/assinatura/verificar', subscriptionLimiter, async (req, res) => {
+  const purchaseToken = req.body?.purchaseToken;
+  if (typeof purchaseToken !== 'string' || purchaseToken.length < 10 || purchaseToken.length > 4096) {
+    return res.status(400).json({ ativa: false, error: 'Token de compra inválido.' });
+  }
+  try {
+    const accessToken = await googleAccessToken();
+    const endpoint = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(GOOGLE_PACKAGE_NAME)}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
+    const response = await fetch(endpoint, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (response.status === 404 || response.status === 400) {
+      return res.json({ ativa: false });
+    }
+    if (!response.ok) {
+      console.error('Google Play subscription API HTTP', response.status);
+      return res.status(503).json({ error: 'Não foi possível validar a assinatura no Google Play.' });
+    }
+    const purchase = await response.json();
+    const matchingLine = (purchase.lineItems || []).find(item => item.productId === GOOGLE_SUBSCRIPTION_ID);
+    const expiry = matchingLine?.expiryTime ? Date.parse(matchingLine.expiryTime) : NaN;
+    const allowedStates = new Set(['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_CANCELED', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD']);
+    const ativa = Boolean(matchingLine && Number.isFinite(expiry) && expiry > Date.now() && allowedStates.has(purchase.subscriptionState));
+    return res.json({ ativa, expiraEm: matchingLine?.expiryTime || null });
+  } catch (error) {
+    console.error('Falha ao verificar assinatura:', error.message);
+    return res.status(503).json({ error: 'Validação de assinatura temporariamente indisponível.' });
   }
 });
 
