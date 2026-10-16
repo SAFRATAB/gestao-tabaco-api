@@ -5,6 +5,8 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
 
 const app = express();
+// Reconhecer o proxy reverso do Render
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 10000;
 const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = (process.env.OPENAI_MODEL || 'gpt-5.6-luna').trim();
@@ -393,6 +395,51 @@ app.post('/api/assinatura/verificar', subscriptionLimiter, async (req, res) => {
     console.error('Falha ao verificar assinatura:', error.message);
     return res.status(503).json({ error: 'Validação de assinatura temporariamente indisponível.' });
   }
+});
+
+// Acesso temporário de avaliação. Configure SAFRATAB_REVIEW_CODE e
+// SAFRATAB_REVIEW_SIGNING_KEY (segredos distintos) nas variáveis do Render.
+const reviewLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10,
+  standardHeaders: 'draft-8', legacyHeaders: false });
+const REVIEW_TTL_DAYS = 30;
+function reviewSign(payload) {
+  return crypto.createHmac('sha256', process.env.SAFRATAB_REVIEW_SIGNING_KEY)
+    .update(payload).digest('base64url');
+}
+function safeEqual(a, b) {
+  const aa = Buffer.from(String(a)); const bb = Buffer.from(String(b));
+  return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
+}
+app.post('/api/avaliacao/ativar', reviewLimiter, (req, res) => {
+  const configured = process.env.SAFRATAB_REVIEW_CODE;
+  const signingKey = process.env.SAFRATAB_REVIEW_SIGNING_KEY;
+  const code = req.body?.codigo;
+  if (!configured || !signingKey || signingKey.length < 32) {
+    return res.status(503).json({ error: 'Acesso de avaliação indisponível.' });
+  }
+  if (typeof code !== 'string' || code.length > 200 || !safeEqual(code, configured)) {
+    return res.status(403).json({ error: 'Código de avaliação inválido.' });
+  }
+  const expiraEm = new Date(Date.now() + REVIEW_TTL_DAYS * 86400000).toISOString();
+  const payload = Buffer.from(JSON.stringify({ type: 'review', expiraEm })).toString('base64url');
+  return res.json({ token: `${payload}.${reviewSign(payload)}`, expiraEm });
+});
+app.post('/api/avaliacao/verificar', reviewLimiter, (req, res) => {
+  const signingKey = process.env.SAFRATAB_REVIEW_SIGNING_KEY;
+  const token = req.body?.token;
+  if (!signingKey || signingKey.length < 32 || typeof token !== 'string' || token.length > 2000) {
+    return res.json({ autorizado: false });
+  }
+  const parts = token.split('.');
+  if (parts.length !== 2 || !safeEqual(parts[1], reviewSign(parts[0]))) {
+    return res.json({ autorizado: false });
+  }
+  try {
+    const data = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    const autorizado = data.type === 'review' && Number.isFinite(Date.parse(data.expiraEm))
+      && Date.parse(data.expiraEm) > Date.now();
+    return res.json({ autorizado, expiraEm: autorizado ? data.expiraEm : null });
+  } catch (_) { return res.json({ autorizado: false }); }
 });
 
 app.use((error, req, res, next) => {
