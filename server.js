@@ -5,8 +5,6 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
 
 const app = express();
-// Reconhecer o proxy reverso do Render
-app.set('trust proxy', 1);
 const PORT = process.env.PORT || 10000;
 const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = (process.env.OPENAI_MODEL || 'gpt-5.6-luna').trim();
