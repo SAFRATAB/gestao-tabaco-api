@@ -3,6 +3,8 @@ const cors = require('cors');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
+const { issueServiceToken, requireServiceAccess } = require('./service_auth');
+const { subscriptionStatus } = require('./subscription_policy');
 
 const app = express();
 // Reconhecer o proxy reverso do Render
@@ -172,7 +174,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.post('/api/ler-nota-fiscal', nfLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/ler-nota-fiscal', requireServiceAccess, nfLimiter, upload.single('file'), async (req, res) => {
   try {
     if (!OPENAI_API_KEY) {
       return res.status(500).json({
@@ -255,6 +257,7 @@ Analise o documento inteiro e retorne os dados da nota fiscal, classificando cad
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120000),
     });
 
     const raw = await response.text();
@@ -312,6 +315,9 @@ Analise o documento inteiro e retorne os dados da nota fiscal, classificando cad
     return res.json(result);
 
   } catch (error) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+      return res.status(504).json({ error: 'A leitura demorou além do tempo de espera. Tente novamente.' });
+    }
     console.error('Erro em /api/ler-nota-fiscal:', error);
 
     return res.status(500).json({
@@ -386,11 +392,8 @@ app.post('/api/assinatura/verificar', subscriptionLimiter, async (req, res) => {
       return res.status(503).json({ error: 'Não foi possível validar a assinatura no Google Play.' });
     }
     const purchase = await response.json();
-    const matchingLine = (purchase.lineItems || []).find(item => item.productId === GOOGLE_SUBSCRIPTION_ID);
-    const expiry = matchingLine?.expiryTime ? Date.parse(matchingLine.expiryTime) : NaN;
-    const allowedStates = new Set(['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_CANCELED', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD']);
-    const ativa = Boolean(matchingLine && Number.isFinite(expiry) && expiry > Date.now() && allowedStates.has(purchase.subscriptionState));
-    return res.json({ ativa, expiraEm: matchingLine?.expiryTime || null });
+    const status = subscriptionStatus(purchase, GOOGLE_SUBSCRIPTION_ID);
+    return res.json({ ...status, ...(status.ativa ? { serviceToken: issueServiceToken() } : {}) });
   } catch (error) {
     console.error('Falha ao verificar assinatura:', error.message);
     return res.status(503).json({ error: 'Validação de assinatura temporariamente indisponível.' });
@@ -438,7 +441,8 @@ app.post('/api/avaliacao/verificar', reviewLimiter, (req, res) => {
     const data = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
     const autorizado = data.type === 'review' && Number.isFinite(Date.parse(data.expiraEm))
       && Date.parse(data.expiraEm) > Date.now();
-    return res.json({ autorizado, expiraEm: autorizado ? data.expiraEm : null });
+    return res.json({ autorizado, expiraEm: autorizado ? data.expiraEm : null,
+      ...(autorizado ? { serviceToken: issueServiceToken() } : {}) });
   } catch (_) { return res.json({ autorizado: false }); }
 });
 
@@ -456,6 +460,9 @@ app.use((error, req, res, next) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Gestão Tabaco API rodando na porta ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Gestão Tabaco API rodando na porta ${PORT}`);
+  });
+}
+module.exports = app;

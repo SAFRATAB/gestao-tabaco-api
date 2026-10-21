@@ -2,11 +2,12 @@
   "name": "gestao-tabaco-api",
   "version": "1.0.0",
   "private": true,
-  "description": "Backend do Gestão Tabaco para leitura de notas fiscais com OpenAI.",
+  "description": "Backend do Gest\u00e3o Tabaco para leitura de notas fiscais com OpenAI.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20 <26"
