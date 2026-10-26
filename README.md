@@ -47,23 +47,70 @@ ao Google ou à OpenAI.
 
 ## Teste gratuito de 15 dias
 
-Requer Node 22.13 ou superior (até 25) e armazenamento persistente. No Render,
-confirme ou adicione um Persistent Disk ao serviço e configure, por exemplo:
+A opção recomendada é **Render Free + Supabase Free**, sem disco pago no Render.
+Requer Node 22.13 ou superior (até 25). O banco guarda somente o identificador
+pseudônimo do aparelho, as datas do teste e a chave de assinatura dos comprovantes.
+Os registros agrícolas continuam locais no aplicativo.
 
+### Configuração sem disco pago
+
+1. Crie uma conta em https://supabase.com/ e um projeto no plano **Free**.
+   Selecione a região São Paulo, se disponível. Guarde a senha do banco.
+2. No projeto, abra **SQL Editor**, crie uma consulta e execute todo o arquivo
+   [supabase/trial_access.sql](supabase/trial_access.sql). O script pode ser
+   executado novamente sem apagar registros nem renovar prazos.
+3. Em **Project Settings / API** (ou **Data API**), copie a **Project URL**.
+   Em **API Keys**, localize a chave administrativa **service_role** na seção
+   de chaves legadas JWT. Não use a chave pública `anon`/publishable.
+4. No Render, abra o serviço `gestao-tabaco-api` → **Environment** e configure:
+
+   ```text
+   SUPABASE_URL=https://SEU-PROJETO.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=CHAVE_SERVICE_ROLE_DO_PROJETO
+   ```
+
+   A chave é secreta: cole-a somente no ambiente do Render, nunca no chat,
+   aplicativo ou repositório. Não é necessário configurar
+   `SAFRATAB_TRIAL_DB_PATH` nem adicionar um disco.
+5. Salve e publique novamente a API. Aguarde **Live**. Em um aparelho de teste,
+   ative os 15 dias e confirme que nova ativação mantém a mesma data de término.
+
+As funções SQL e as tabelas são inacessíveis às credenciais públicas do app;
+somente a API, usando `service_role`, pode consultá-las. O início é definido pelo
+relógio do banco, e inserções atômicas preservam a primeira ativação e a chave
+mesmo com pedidos simultâneos ou múltiplas instâncias da API.
+
+Sem configuração, ou com indisponibilidade do banco, as rotas do teste retornam
+503; não há fallback em memória ou arquivo temporário que reinicie o prazo.
+As assinaturas existentes continuam funcionando. Comprovantes já emitidos seguem
+válidos offline até seu término original, conforme o controle do aplicativo.
+
+Os planos gratuitos têm limites e podem sofrer suspensão por inatividade; confira
+as condições vigentes do Render e Supabase. Não foi contratado plano pago.
+Preserve o projeto e a chave de assinatura no banco entre publicações. Não apague
+as tabelas para publicar uma versão. Se houver testes reais em outro banco,
+migre também as datas originais e a chave antes de trocar o provedor.
+
+### Compatibilidade com disco existente
+
+Instalações que já usem SQLite podem continuar com `SAFRATAB_TRIAL_DB_PATH` em
+um disco persistente. Quando as variáveis do Supabase estiverem presentes, elas
+têm prioridade. Configuração incompleta não cai silenciosamente no SQLite.
+Não use o filesystem temporário do Render Free para armazenar testes.
+
+### Verificação
+
+`npm test` testa os contratos HTTP, assinaturas e falhas do banco com transporte
+simulado, sem consumir serviços externos. Para validar também as permissões e
+as regras reais do PostgreSQL, execute em **um banco temporário de testes**:
+
+```sh
+psql -v ON_ERROR_STOP=1 -f test/trial_access_postgres.sql
 ```
-SAFRATAB_TRIAL_DB_PATH=/var/data/safratab/trials.sqlite
-```
 
-O disco precisa estar montado em `/var/data`. Não use o filesystem temporário do
-serviço. Sem a variável, os endpoints `/api/teste-gratuito/ativar` e `/verificar`
-respondem 503; assinaturas existentes continuam funcionando. A configuração do
-disco pode exigir um plano pago e deve ser feita antes de distribuir o app.
-
-O SQLite guarda o identificador pseudônimo do aparelho, início e fim do teste,
-e a chave de assinatura dos comprovantes. Preserve o banco e a chave ao publicar:
-a reinstalação do app no mesmo aparelho não deve renovar o prazo. Execute em uma
-única instância com esse disco; não compartilhe SQLite entre múltiplas instâncias.
-Não apague esse banco para publicar uma nova versão.
+Esse teste cria os papéis do Supabase quando ausentes e não deve ser executado
+no projeto de produção. A configuração do projeto real ainda precisa ser validada
+após inserir as variáveis no Render.
 
 O teste começa na primeira ativação online, dura 15 dias corridos, não exige
 cartão e não cria cobrança automática. Repetir a ativação retorna o prazo
