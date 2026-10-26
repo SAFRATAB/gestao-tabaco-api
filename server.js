@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
 const { issueServiceToken, requireServiceAccess } = require('./service_auth');
 const { subscriptionStatus } = require('./subscription_policy');
+const { TrialStore, trialRouter } = require('./trial_access');
 
 const app = express();
 // Reconhecer o proxy reverso do Render
@@ -17,6 +18,12 @@ const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
+let trialStore;
+const trialLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
+app.use('/api/teste-gratuito', trialLimiter, trialRouter(() => {
+  if (!trialStore) trialStore = new TrialStore(process.env.SAFRATAB_TRIAL_DB_PATH);
+  return trialStore;
+}));
 
 const upload = multer({
   storage: multer.memoryStorage(),

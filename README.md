@@ -44,3 +44,35 @@ Os limites existentes de quantidade e tamanho de arquivos não foram alterados.
 
 Execute `npm test` para validar a autorização e os contratos HTTP sem chamadas
 ao Google ou à OpenAI.
+
+## Teste gratuito de 15 dias
+
+Requer Node 22.13 ou superior (até 25) e armazenamento persistente. No Render,
+confirme ou adicione um Persistent Disk ao serviço e configure, por exemplo:
+
+```
+SAFRATAB_TRIAL_DB_PATH=/var/data/safratab/trials.sqlite
+```
+
+O disco precisa estar montado em `/var/data`. Não use o filesystem temporário do
+serviço. Sem a variável, os endpoints `/api/teste-gratuito/ativar` e `/verificar`
+respondem 503; assinaturas existentes continuam funcionando. A configuração do
+disco pode exigir um plano pago e deve ser feita antes de distribuir o app.
+
+O SQLite guarda o identificador pseudônimo do aparelho, início e fim do teste,
+e a chave de assinatura dos comprovantes. Preserve o banco e a chave ao publicar:
+a reinstalação do app no mesmo aparelho não deve renovar o prazo. Execute em uma
+única instância com esse disco; não compartilhe SQLite entre múltiplas instâncias.
+Não apague esse banco para publicar uma nova versão.
+
+O teste começa na primeira ativação online, dura 15 dias corridos, não exige
+cartão e não cria cobrança automática. Repetir a ativação retorna o prazo
+original. Os comprovantes assinados permitem uso offline até o término original.
+O token de serviços remotos nunca ultrapassa esse término. A tolerância offline
+de 7 dias das assinaturas pagas permanece independente. Não há cupons próprios.
+
+A identificação usa um hash do Android ID associado ao app; é controle por
+aparelho, não por pessoa. Troca de aparelho, restauração de fábrica ou mudança
+da identidade de assinatura do APK podem gerar outra identidade. Sem conta do
+produtor e relógio confiável de hardware, isso não oferece proteção absoluta
+contra adulteração de um aparelho. Os registros agrícolas permanecem locais.
