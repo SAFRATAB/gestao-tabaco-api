@@ -5,7 +5,8 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
 const { issueServiceToken, requireServiceAccess } = require('./service_auth');
 const { subscriptionStatus } = require('./subscription_policy');
-const { TrialStore, trialRouter } = require('./trial_access');
+const { trialRouter } = require('./trial_access');
+const { createTrialStore } = require('./supabase_trial_store');
 
 const app = express();
 // Reconhecer o proxy reverso do Render
@@ -21,7 +22,7 @@ app.use(express.json({ limit: '1mb' }));
 let trialStore;
 const trialLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 app.use('/api/teste-gratuito', trialLimiter, trialRouter(() => {
-  if (!trialStore) trialStore = new TrialStore(process.env.SAFRATAB_TRIAL_DB_PATH);
+  if (!trialStore) trialStore = createTrialStore();
   return trialStore;
 }));
 

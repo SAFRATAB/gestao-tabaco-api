@@ -55,29 +55,34 @@ class TrialStore {
     } catch (_) { return null; }
   }
   describe(row) {
-    const now = this.now();
-    const payload = Buffer.from(JSON.stringify({ aud: AUDIENCE, dispositivo: row.device_hash,
-      inicio: row.started_at, expiraEm: row.expires_at, verificadoEm: now })).toString('base64url');
-    const receipt = `${payload}.${crypto.sign(null, Buffer.from(payload), this.privateKey).toString('base64url')}`;
-    const active = now >= row.started_at && now < row.expires_at;
-    return { ativo: active, dias: TRIAL_DAYS, inicio: row.started_at, expiraEm: row.expires_at,
-      servidorAgora: now, comprovante: receipt, chavePublica: this.publicBytes,
-      ...(active ? { serviceToken: issueServiceToken({ now, expiresAt: row.expires_at }) } : {}) };
+    return describeTrial(row, this.privateKey, this.now());
   }
   close() { this.db.close(); }
+}
+
+function describeTrial(row, privateKey, now) {
+    const publicKey = crypto.createPublicKey(privateKey);
+    const publicBytes = publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({ aud: AUDIENCE, dispositivo: row.device_hash,
+      inicio: row.started_at, expiraEm: row.expires_at, verificadoEm: now })).toString('base64url');
+    const receipt = `${payload}.${crypto.sign(null, Buffer.from(payload), privateKey).toString('base64url')}`;
+    const active = now >= row.started_at && now < row.expires_at;
+    return { ativo: active, dias: TRIAL_DAYS, inicio: row.started_at, expiraEm: row.expires_at,
+      servidorAgora: now, comprovante: receipt, chavePublica: publicBytes,
+      ...(active ? { serviceToken: issueServiceToken({ now, expiresAt: row.expires_at }) } : {}) };
 }
 
 function trialRouter(getStore) {
   const router = Router();
   function handler(activate) {
-    return (req, res) => {
+    return async (req, res) => {
       const device = req.body?.dispositivo;
       if (typeof device !== 'string' || !/^[a-f0-9]{64}$/.test(device)) {
         return res.status(400).json({ error: 'Não foi possível identificar este aparelho.' });
       }
       try {
         const store = getStore();
-        const result = activate ? store.activate(device) : store.verify(device, req.body?.comprovante);
+        const result = activate ? await store.activate(device) : await store.verify(device, req.body?.comprovante);
         if (!result) return res.status(403).json({ error: 'Comprovante de teste gratuito inválido.' });
         res.set('Cache-Control', 'no-store');
         return res.json(result);
@@ -91,4 +96,4 @@ function trialRouter(getStore) {
   router.post('/verificar', handler(false));
   return router;
 }
-module.exports = { TrialStore, trialRouter, TRIAL_MS, AUDIENCE };
+module.exports = { TrialStore, trialRouter, TRIAL_MS, AUDIENCE, describeTrial };
