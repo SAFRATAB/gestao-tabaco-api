@@ -8,8 +8,8 @@ const signingKey = configuredKey || crypto.randomBytes(32).toString('hex');
 function sign(value, key = signingKey) {
   return crypto.createHmac('sha256', key).update(value).digest('base64url');
 }
-function issueServiceToken({ now = Date.now(), key = signingKey } = {}) {
-  const payload = Buffer.from(JSON.stringify({ aud: audience, exp: now + 60 * 60 * 1000 })).toString('base64url');
+function issueServiceToken({ now = Date.now(), key = signingKey, expiresAt = Infinity } = {}) {
+  const payload = Buffer.from(JSON.stringify({ aud: audience, exp: Math.min(now + 60 * 60 * 1000, expiresAt) })).toString('base64url');
   return `${payload}.${sign(payload, key)}`;
 }
 function verifyServiceToken(token, { now = Date.now(), key = signingKey } = {}) {
