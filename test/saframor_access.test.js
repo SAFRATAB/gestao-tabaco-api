@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const { issueServiceToken, verifyServiceToken } = require('../service_auth');
-const { saframorAccessRouter } = require('../saframor_access');
+const { saframorAccessRouter, saframorUsageLimiter } = require('../saframor_access');
 
 async function iniciar(t, app = require('../server')) {
   const server = app.listen(0, '127.0.0.1');
@@ -70,4 +70,27 @@ test('mesma rota e chave usam perfis corretos sem mudar o esquema do SAFRATAB',a
   categoriaInvalida=true;
   assert.equal((await ler(token)).status,502);
   const antes=perfis.length;assert.equal((await ler(token+'x')).status,401);assert.equal(perfis.length,antes);
+});
+
+
+test('sessão automática exige habilitação no servidor e dura 15 minutos',async t=>{
+  for(const automatico of [false,true]) {
+    const app=express();app.use('/api/saframor',saframorAccessRouter({automatico}));
+    const base=await iniciar(t,app);
+    const r=await fetch(base+'/api/saframor/sessao',{method:'POST'});
+    assert.equal(r.status,automatico?200:503);
+    if(automatico){const j=await r.json();assert.equal(verifyServiceToken(j.serviceToken,{aplicativo:'saframor'}),true);assert.equal(verifyServiceToken(j.serviceToken),false);assert.ok(Date.parse(j.expiraEm)-Date.now()<=15*60*1000);}
+  }
+});
+test('cota global do piloto limita leituras SAFRAMOR sem afetar SAFRATAB',async t=>{
+  const {requireServiceAccess}=require('../service_auth');
+  const app=express();let leituras=0;
+  app.post('/ler',requireServiceAccess,saframorUsageLimiter({limit:1}),(_req,res)=>{leituras++;res.json({ok:true});});
+  const base=await iniciar(t,app);
+  const ler=token=>fetch(base+'/ler',{method:'POST',headers:{Authorization:`Bearer ${token}`}});
+  const morango=issueServiceToken({aplicativo:'saframor'});
+  assert.equal((await ler(morango)).status,200);
+  assert.equal((await ler(morango)).status,429);
+  assert.equal((await ler(issueServiceToken())).status,200);
+  assert.equal(leituras,2);
 });

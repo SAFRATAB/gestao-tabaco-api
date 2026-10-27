@@ -4,8 +4,20 @@ const rateLimit = require('express-rate-limit');
 const { issueServiceToken } = require('./service_auth');
 
 // Acesso privado do piloto SAFRAMOR, independente das assinaturas SAFRATAB.
-function saframorAccessRouter({ codigo = process.env.SAFRAMOR_ACCESS_CODE || '', now = Date.now } = {}) {
+function saframorAccessRouter({ codigo = process.env.SAFRAMOR_ACCESS_CODE || '', now = Date.now, automatico = process.env.SAFRAMOR_AUTO_ACCESS === 'true' } = {}) {
   const router = express.Router();
+  // Sessão anônima de piloto, habilitada explicitamente pelo administrador.
+  // Não identifica usuário nem comprova instalação; cotas limitam o consumo.
+  router.post('/sessao', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10,
+    standardHeaders: 'draft-8', legacyHeaders: false,
+    message: { error: 'Aguarde antes de tentar ler outra nota.' },
+  }), (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!automatico) return res.status(503).json({ error: 'A leitura de notas ainda não foi habilitada pelo administrador.' });
+    const instante = now(), expira = instante + 15 * 60 * 1000;
+    return res.json({ serviceToken: issueServiceToken({ now: instante, expiresAt: expira, aplicativo: 'saframor' }),
+      expiraEm: new Date(expira).toISOString() });
+  });
   router.post('/acesso', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10,
     standardHeaders: 'draft-8', legacyHeaders: false,
     message: { error: 'Aguarde antes de tentar autorizar novamente.' },
@@ -21,4 +33,11 @@ function saframorAccessRouter({ codigo = process.env.SAFRAMOR_ACCESS_CODE || '',
   });
   return router;
 }
-module.exports = { saframorAccessRouter };
+function saframorUsageLimiter({ limit = 30 } = {}) {
+  const limiter = rateLimit({ windowMs: 24 * 60 * 60 * 1000, limit,
+    keyGenerator: () => 'saframor-piloto', standardHeaders: 'draft-8', legacyHeaders: false,
+    message: { error: 'O limite diário de leitura de notas do SAFRAMOR foi atingido. Tente novamente amanhã.' },
+  });
+  return (req, res, next) => req.notaFiscalApp === 'saframor' ? limiter(req, res, next) : next();
+}
+module.exports = { saframorAccessRouter, saframorUsageLimiter };

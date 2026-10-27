@@ -4,7 +4,7 @@ const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
 const { issueServiceToken, requireServiceAccess } = require('./service_auth');
-const { saframorAccessRouter } = require('./saframor_access');
+const { saframorAccessRouter, saframorUsageLimiter } = require('./saframor_access');
 const { perfilMorango } = require('./nota_morango');
 const { subscriptionStatus } = require('./subscription_policy');
 const { trialRouter } = require('./trial_access');
@@ -185,7 +185,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.post('/api/ler-nota-fiscal', requireServiceAccess, nfLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/ler-nota-fiscal', requireServiceAccess, saframorUsageLimiter(), nfLimiter, upload.single('file'), async (req, res) => {
   try {
     if (!OPENAI_API_KEY) {
       return res.status(500).json({

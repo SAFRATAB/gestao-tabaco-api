@@ -34,7 +34,7 @@ function requireServiceAccess(req, res, next) {
   const token = header.slice(7);
   if (verifyServiceToken(token)) req.notaFiscalApp = 'safratab';
   else if (verifyServiceToken(token, { aplicativo: 'saframor' })) req.notaFiscalApp = 'saframor';
-  else return res.status(401).json({ error: 'Confirme sua assinatura ou acesso de avaliação; no SAFRAMOR, autorize em Configurar IA.' });
+  else return res.status(401).json({ error: 'Confirme sua assinatura ou acesso de avaliação; no SAFRAMOR, tente ler a nota novamente.' });
   next();
 }
 module.exports = { issueServiceToken, verifyServiceToken, requireServiceAccess };

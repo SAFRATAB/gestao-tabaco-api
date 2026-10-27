@@ -124,49 +124,42 @@ da identidade de assinatura do APK podem gerar outra identidade. Sem conta do
 produtor e relógio confiável de hardware, isso não oferece proteção absoluta
 contra adulteração de um aparelho. Os registros agrícolas permanecem locais.
 
-## SAFRAMOR no mesmo servidor
+## SAFRAMOR no mesmo servidor — leitura direta
 
-A mesma rota `POST /api/ler-nota-fiscal`, `OPENAI_API_KEY` e `OPENAI_MODEL` atendem
-os dois aplicativos. Não crie outro serviço nem altere as credenciais existentes.
-O perfil é derivado da sessão assinada, nunca de um cabeçalho ou campo escolhido
-pelo cliente. SAFRATAB continua retornando Defensivos, Fertilizantes, Lenha e
-Outros; SAFRAMOR recebe Defensivos, Adubos e Outros. O esquema é copiado antes da
-adaptação, sem modificar o do tabaco. Assinaturas, avaliação e teste gratuito do
-SAFRATAB conservam seus contratos e prazos.
+A mesma rota `POST /api/ler-nota-fiscal`, chave `OPENAI_API_KEY` e modelo atendem
+os dois aplicativos. O SAFRAMOR não pede endereço, código ou configuração ao
+produtor: escolher PDF/foto inicia a autorização automática e a leitura.
 
-### Ativar no Render
+### Ativar no Render, somente pelo administrador
 
-1. No serviço existente `gestao-tabaco-api`, abra **Environment**.
-2. Adicione **SAFRAMOR_ACCESS_CODE** com um código privado aleatório (16 a 512
-   caracteres, sem espaços nas pontas). Pode gerar localmente com
-   `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.
-   Nunca use a chave OpenAI como código de acesso e não envie códigos ao GitHub.
-3. Salve e publique o commit mais recente (**Manual Deploy → Deploy latest commit**,
-   se o deploy automático não tiver ocorrido). Preserve todas as variáveis
-   atuais, inclusive OpenAI, assinatura, avaliação e Supabase.
-4. Atualize o SAFRAMOR e abra **Estoque → Registrar compra / Ler NF com IA →
-   Configurar IA**. O endereço padrão já é
-   `https://gestao-tabaco-api.onrender.com`. Informe o código criado no passo 2.
-5. Leia uma nota e revise os itens antes de confirmar. O teste real depende da
-   publicação, das variáveis do Render e da conta OpenAI existente.
+1. Abra o serviço existente `gestao-tabaco-api` → **Environment**.
+2. Adicione `SAFRAMOR_AUTO_ACCESS=true`.
+3. Preserve `OPENAI_API_KEY`, `OPENAI_MODEL` e todas as variáveis do SAFRATAB.
+4. Salve e publique o código atualizado, usando **Manual Deploy → Deploy latest
+   commit** caso o deploy automático não tenha ocorrido.
+5. Atualize o SAFRAMOR e toque em **Ler nota fiscal com IA**. Não há código para
+   digitar no aparelho nem chave OpenAI dentro do APK.
 
-`POST /api/saframor/acesso` recebe `{ "codigo": "..." }` e retorna `serviceToken`
-e `expiraEm`. A sessão dura uma hora e usa o público `saframor-notas-fiscais`;
-`verifyServiceToken` continua verificando exclusivamente o SAFRATAB por padrão.
-A mesma chave de assinatura já usada pelo serviço assina as sessões com públicos
-separados. Não é necessária uma nova chave de assinatura. Sem a nova variável,
-somente o acesso SAFRAMOR retorna 503; o fluxo SAFRATAB permanece disponível.
+O app obtém sessão em `POST /api/saframor/sessao` (sem código) e envia o documento
+para a rota compartilhada usando Bearer token. Sessão de 15 minutos em memória,
+renovada automaticamente. O servidor deriva o perfil do token assinado: SAFRAMOR
+recebe Defensivos, Adubos e Outros; SAFRATAB mantém suas categorias, assinatura,
+avaliação e teste gratuito. Sem a flag, a sessão automática retorna 503 sem
+consumir IA. A rota administrativa antiga `/api/saframor/acesso`, com código,
+continua compatível, mas não é usada pelo app atual.
 
-O código único é acesso privado de piloto, não assinatura compartilhada nem acesso
-público de IA. Ele não é incluído no APK. As sessões ficam somente em memória no
-app e exigem nova autorização após expirar/reiniciar. Limite de acesso: 10
-solicitações por IP a cada 15 minutos. O limite de leitura já existente é
-compartilhado: 30 notas por IP por hora. Rotacionar o código bloqueia novas
-sessões; as emitidas seguem válidas até expirar. Rotacionar a chave de assinatura
-invalida sessões remotas dos dois apps; não é necessário fazer isso na ativação.
-O uso de IA dos dois aplicativos é cobrado na mesma conta OpenAI.
+Este acesso automático é um piloto anônimo: não identifica usuário nem comprova
+que a chamada veio do APK. É habilitado explicitamente pelo administrador. Limites
+por processo: 10 sessões por IP a cada 15 minutos e **30 tentativas de leitura do
+SAFRAMOR por janela de 24 horas, somando todos os IPs**. O contador inclui falhas
+após autorização. A cota do morango não conta leituras SAFRATAB, e o limite
+anterior de 30 notas/IP/hora continua existindo. Contadores em memória reiniciam
+com o processo e multiplicam por réplica. Antes de distribuição pública, usar
+contas/assinaturas e cotas persistentes por usuário; esta sessão anônima não
+substitui essa autenticação. Desativar a flag impede novas sessões; as emitidas
+expiram em até 15 minutos. Não é necessário alterar chaves do SAFRATAB.
 
-`npm test`: 19 testes, incluindo perfis alternados na mesma rota, público dos
-tokens, autenticação, dados incompatíveis, assinatura e teste gratuito. Provedor
-simulado, sem chamadas pagas. Publicação e variáveis reais do Render não foram
-alteradas por estes testes.
+As requisições dos dois apps são cobradas na mesma conta OpenAI. `npm test` roda
+21 testes sem chamadas pagas, incluindo habilitação da sessão, expiração, cota
+global do morango e compatibilidade com o tabaco. O Render real ainda precisa
+receber a flag e o deploy; os testes não alteram suas variáveis.
