@@ -16,7 +16,7 @@ function saframorAccessRouter({ codigo = process.env.SAFRAMOR_ACCESS_CODE || '',
     if (!automatico) return res.status(503).json({ error: 'A leitura de notas ainda não foi habilitada pelo administrador.' });
     const instante = now(), expira = instante + 15 * 60 * 1000;
     return res.json({ serviceToken: issueServiceToken({ now: instante, expiresAt: expira, aplicativo: 'saframor' }),
-      expiraEm: new Date(expira).toISOString() });
+      expiraEm: new Date(expira).toISOString(), servidorAgora: new Date(instante).toISOString() });
   });
   router.post('/acesso', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10,
     standardHeaders: 'draft-8', legacyHeaders: false,

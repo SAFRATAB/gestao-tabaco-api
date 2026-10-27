@@ -163,3 +163,11 @@ As requisições dos dois apps são cobradas na mesma conta OpenAI. `npm test` r
 21 testes sem chamadas pagas, incluindo habilitação da sessão, expiração, cota
 global do morango e compatibilidade com o tabaco. O Render real ainda precisa
 receber a flag e o deploy; os testes não alteram suas variáveis.
+
+### Horário da sessão SAFRAMOR
+
+A resposta de `/api/saframor/sessao` também inclui `servidorAgora` em ISO UTC.
+O cliente calcula a validade por `expiraEm - servidorAgora` e acompanha o tempo
+com relógio monotônico, sem comparar a validade com a data/hora civil do aparelho.
+O token e sua verificação no servidor não mudaram. O campo é aditivo e não afeta
+SAFRATAB ou versões anteriores do SAFRAMOR.

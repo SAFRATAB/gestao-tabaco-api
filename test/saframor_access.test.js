@@ -79,7 +79,7 @@ test('sessão automática exige habilitação no servidor e dura 15 minutos',asy
     const base=await iniciar(t,app);
     const r=await fetch(base+'/api/saframor/sessao',{method:'POST'});
     assert.equal(r.status,automatico?200:503);
-    if(automatico){const j=await r.json();assert.equal(verifyServiceToken(j.serviceToken,{aplicativo:'saframor'}),true);assert.equal(verifyServiceToken(j.serviceToken),false);assert.ok(Date.parse(j.expiraEm)-Date.now()<=15*60*1000);}
+    if(automatico){const j=await r.json();assert.equal(verifyServiceToken(j.serviceToken,{aplicativo:'saframor'}),true);assert.equal(verifyServiceToken(j.serviceToken),false);assert.ok(Date.parse(j.expiraEm)-Date.now()<=15*60*1000);assert.equal(Date.parse(j.expiraEm)-Date.parse(j.servidorAgora),15*60*1000);}
   }
 });
 test('cota global do piloto limita leituras SAFRAMOR sem afetar SAFRATAB',async t=>{
