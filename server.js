@@ -4,6 +4,8 @@ const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
 const { issueServiceToken, requireServiceAccess } = require('./service_auth');
+const { saframorAccessRouter } = require('./saframor_access');
+const { perfilMorango } = require('./nota_morango');
 const { subscriptionStatus } = require('./subscription_policy');
 const { trialRouter } = require('./trial_access');
 const { createTrialStore } = require('./supabase_trial_store');
@@ -19,6 +21,7 @@ const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
+app.use('/api/saframor', saframorAccessRouter());
 let trialStore;
 const trialLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 app.use('/api/teste-gratuito', trialLimiter, trialRouter(() => {
@@ -210,12 +213,15 @@ app.post('/api/ler-nota-fiscal', requireServiceAccess, nfLimiter, upload.single(
       });
     }
 
+    const perfil = req.notaFiscalApp === 'saframor'
+      ? perfilMorango(notaFiscalSchema)
+      : { schema: notaFiscalSchema, instrucao: instrucaoNotaFiscal };
     const base64 = req.file.buffer.toString('base64');
 
     const content = [
       {
         type: 'input_text',
-        text: `${instrucaoNotaFiscal}
+        text: `${perfil.instrucao}
 
 O arquivo recebido é do tipo ${
           mime === 'application/pdf' ? 'pdf' : 'imagem'
@@ -252,7 +258,7 @@ Analise o documento inteiro e retorne os dados da nota fiscal, classificando cad
           type: 'json_schema',
           name: 'nota_fiscal_extraction',
           strict: true,
-          schema: notaFiscalSchema,
+          schema: perfil.schema,
         },
       },
       max_output_tokens: 12000,
@@ -320,6 +326,11 @@ Analise o documento inteiro e retorne os dados da nota fiscal, classificando cad
       });
     }
 
+    if (req.notaFiscalApp === 'saframor' &&
+        (!Array.isArray(result.itens) || result.itens.length > 200 ||
+         result.itens.some(i => !i || typeof i.produto !== 'string' || !['Defensivos', 'Adubos', 'Outros'].includes(i.categoria)))) {
+      return res.status(502).json({ error: 'A IA retornou itens incompatíveis com o SAFRAMOR. Tente novamente.' });
+    }
     return res.json(result);
 
   } catch (error) {
