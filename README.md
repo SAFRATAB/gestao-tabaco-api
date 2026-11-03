@@ -171,3 +171,19 @@ O cliente calcula a validade por `expiraEm - servidorAgora` e acompanha o tempo
 com relógio monotônico, sem comparar a validade com a data/hora civil do aparelho.
 O token e sua verificação no servidor não mudaram. O campo é aditivo e não afeta
 SAFRATAB ou versões anteriores do SAFRAMOR.
+
+## Backup manual (ativação necessária)
+
+A API agora disponibiliza `/api/backups` com acesso por e-mail confirmado no Supabase. Assinaturas e testes gratuitos não dão acesso aos backups de outros usuários. Os arquivos ficam em um bucket privado e as consultas são filtradas pelo titular identificado pelo servidor.
+
+Antes de disponibilizar a função:
+
+1. Execute [`supabase/manual_backups.sql`](supabase/manual_backups.sql) no SQL Editor do projeto Supabase existente. O script cria a tabela com RLS, o bucket privado e uma política restritiva que impede exposição por políticas amplas de outros buckets.
+2. Habilite Email em Authentication. No template Magic Link, inclua `{{ .Token }}` para enviar o código numérico que o app solicita. Não é necessário deep link.
+3. Configure SMTP para produção. O remetente padrão do Supabase é voltado a testes e tem restrições de destinatário e limites baixos. As credenciais SMTP ficam no painel do Supabase, nunca no repositório ou no aplicativo.
+4. Mantenha `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` somente no Render. O aplicativo nunca recebe a chave administrativa.
+5. Publique a política de privacidade e o canal público de exclusão de conta atualizados, antes de liberar a conta de backup no Google Play.
+
+Os envios são iniciados pelo produtor. A API confere o formato, as fotos e o SHA-256, guarda uma cópia e tenta manter as cinco versões mais recentes por conta. Uma falha na limpeza não invalida o novo backup; uma operação posterior tenta novamente. Arquivos têm limite de 32 MB comprimidos / 48 MB descomprimidos. Monitore a capacidade do plano Supabase antes de ampliar o público.
+
+Rotas: POST `/api/backups/codigo`, POST `/api/backups/entrar`, POST `/api/backups/renovar`, GET/POST `/api/backups/`, GET `/api/backups/:id` e DELETE `/api/backups/conta`. A exclusão remove somente os objetos e a conta do titular, sem cancelar a assinatura Google Play nem apagar registros no celular.

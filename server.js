@@ -9,6 +9,7 @@ const { perfilMorango } = require('./nota_morango');
 const { subscriptionStatus } = require('./subscription_policy');
 const { trialRouter } = require('./trial_access');
 const { createTrialStore } = require('./supabase_trial_store');
+const { backupRouter } = require('./backup_access');
 
 const app = express();
 // Reconhecer o proxy reverso do Render
@@ -20,6 +21,7 @@ const OPENAI_MODEL = (process.env.OPENAI_MODEL || 'gpt-5.6-luna').trim();
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 
 app.use(cors());
+app.use('/api/backups', backupRouter());
 app.use(express.json({ limit: '1mb' }));
 app.use('/api/saframor', saframorAccessRouter());
 let trialStore;
@@ -485,3 +487,4 @@ if (require.main === module) {
   });
 }
 module.exports = app;
+
