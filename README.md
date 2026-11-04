@@ -187,3 +187,7 @@ Antes de disponibilizar a função:
 Os envios são iniciados pelo produtor. A API confere o formato, as fotos e o SHA-256, guarda uma cópia e tenta manter as cinco versões mais recentes por conta. Uma falha na limpeza não invalida o novo backup; uma operação posterior tenta novamente. Arquivos têm limite de 32 MB comprimidos / 48 MB descomprimidos. Monitore a capacidade do plano Supabase antes de ampliar o público.
 
 Rotas: POST `/api/backups/codigo`, POST `/api/backups/entrar`, POST `/api/backups/renovar`, GET/POST `/api/backups/`, GET `/api/backups/:id` e DELETE `/api/backups/conta`. A exclusão remove somente os objetos e a conta do titular, sem cancelar a assinatura Google Play nem apagar registros no celular.
+
+### Painel administrativo de gestão
+
+Execute `supabase/management_panel.sql` depois do SQL dos backups. Habilite apenas o e-mail administrativo confirmado seguindo a instrução comentada no SQL. `/api/gestao/sessao`, `/produtores` e `/produtores/:id?safra=ID` exigem sessão Supabase e papel administrativo ativo. A lista inclui contas com backups enviados, sem autorização separada do produtor. O aplicativo e a política informam o uso das cópias para acompanhamento de gestão. Não altera dados e não envia backups automaticamente. A API registra listagens e consultas em `safratab_management_audit`; falhas de auditoria impedem a entrega dos dados. Chaves administrativas permanecem no servidor.
