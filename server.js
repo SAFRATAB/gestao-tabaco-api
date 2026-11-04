@@ -10,6 +10,7 @@ const { subscriptionStatus } = require('./subscription_policy');
 const { trialRouter } = require('./trial_access');
 const { createTrialStore } = require('./supabase_trial_store');
 const { backupRouter } = require('./backup_access');
+const { managementRouter } = require('./management_access');
 
 const app = express();
 // Reconhecer o proxy reverso do Render
@@ -22,6 +23,7 @@ const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 
 app.use(cors());
 app.use('/api/backups', backupRouter());
+app.use('/api/gestao', managementRouter());
 app.use(express.json({ limit: '1mb' }));
 app.use('/api/saframor', saframorAccessRouter());
 let trialStore;
