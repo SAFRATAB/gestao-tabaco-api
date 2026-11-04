@@ -82,3 +82,7 @@ test('exclusão remove só arquivos do titular antes de apagar sua conta; tolera
   assert.equal(calls.at(-1)[1], 'DELETE');
   assert.ok(calls.every(([u]) => !u.includes(other)));
 });
+test('código expirado retornado como 403 pelo Supabase orienta pedir outro, sem confundir com sessão', async () => {
+  const store = new SupabaseBackupStore({ url:'https://teste.supabase.co', key:'somente-servidor', request:async()=>json({code:'otp_expired',msg:'secret-message-not-to-display'},403) });
+  await assert.rejects(store.verifyCode('admin@example.com','12345678'), error => error.status===400 && /já utilizado/.test(error.message) && !error.message.includes('secret-message'));
+});
