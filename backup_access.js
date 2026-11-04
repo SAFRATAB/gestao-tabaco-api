@@ -53,7 +53,12 @@ class SupabaseBackupStore {
       ...(body === undefined ? {} : { body: binary ? body : JSON.stringify(body) }),
     });
     if (!response.ok && !(method === 'DELETE' && response.status === 404)) {
-      if (path === '/auth/v1/verify' && response.status === 400) { const e = new Error('Código inválido ou expirado. Solicite outro código.'); e.status = 400; throw e; }
+      if (path === '/auth/v1/verify' && [400, 403].includes(response.status)) {
+        const detail = await response.json().catch(() => ({}));
+        const expired = response.status === 400 || ['otp_expired', 'token_expired', 'invalid_credentials'].includes(detail.code || detail.error_code);
+        const e = new Error(expired ? 'Código inválido, expirado ou já utilizado. Solicite outro código e use somente o mais recente.' : 'Não foi possível confirmar o código. Confira a configuração de autenticação do serviço.');
+        e.status = expired ? 400 : 503; throw e;
+      }
       if (path === '/auth/v1/otp' && response.status === 429) { const e = new Error('Aguarde alguns minutos antes de pedir outro código.'); e.status = 429; throw e; }
       const e = new Error(response.status === 401 || response.status === 403 ? 'Confirme seu e-mail novamente para continuar.' : 'O serviço de backup está indisponível. Tente novamente.');
       e.status = response.status === 401 || response.status === 403 ? 401 : 503;

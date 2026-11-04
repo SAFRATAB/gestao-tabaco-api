@@ -5,7 +5,9 @@ const { buildManagementReport } = require('./management_report');
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 class ManagementStore extends SupabaseBackupStore {
   async role(userId) {
-    const rows = await (await this.call(`/rest/v1/safratab_admin_roles?user_id=eq.${userId}&active=eq.true&select=user_id&limit=1`)).json();
+    let rows;
+    try { rows = await (await this.call(`/rest/v1/safratab_admin_roles?user_id=eq.${userId}&active=eq.true&select=user_id&limit=1`)).json(); }
+    catch (_) { const e = new Error('Não foi possível consultar a configuração administrativa. Confira se o SQL do painel foi executado no Supabase.'); e.status = 503; throw e; }
     if (rows.length !== 1) { const e = new Error('Sua conta ainda não está autorizada para o painel de gestão.'); e.status = 403; throw e; }
   }
   async audit(admin, producer, action) {
@@ -40,7 +42,10 @@ function managementRouter(getStore = () => new ManagementStore()) {
       const token = /^Bearer ([^\s]{20,4096})$/.exec(req.headers.authorization || '')?.[1];
       if (!token) return res.status(401).json({ error: 'Confirme sua conta para acessar o serviço.' });
       req.managementUser = await getStore().identify(token); next();
-    } catch (_) { res.status(401).json({ error: 'Confirme seu e-mail novamente para continuar.' }); }
+    } catch (error) {
+      const expired = error.status === 401;
+      res.status(expired ? 401 : 503).json({ error: expired ? 'Sua sessão não foi reconhecida. Solicite um novo código de acesso.' : 'Não foi possível validar a sessão no servidor. Tente novamente em instantes.' });
+    }
   });
   const safe = fn => async (req,res) => { try { await fn(req,res); } catch(e) { res.status(e.status || 503).json({ error: e.status ? e.message : 'Não foi possível consultar o acompanhamento. Tente novamente.' }); } };
   router.get('/sessao', safe(async (req,res) => { await getStore().role(req.managementUser); res.json({ authorized:true }); }));
